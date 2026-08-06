@@ -18,21 +18,34 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('No token provided');
     }
     try {
-      // First try standard JWT verification
+      // First try standard internal JWT verification (for demo/mock purposes)
       const payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET || 'super-secret-jwt-key',
       });
       request['user'] = payload;
     } catch {
       try {
-        // Fallback: decode Supabase / external JWT payload
-        const decoded = this.jwtService.decode(token) as any;
-        if (decoded && (decoded.sub || decoded.email)) {
-          request['user'] = { sub: decoded.sub || decoded.email, username: decoded.email || decoded.sub };
-        } else {
+        // Fallback: Verify Supabase JWT payload using SUPABASE_JWT_SECRET
+        if (!process.env.SUPABASE_JWT_SECRET) {
+          console.warn('SUPABASE_JWT_SECRET is not set, falling back to insecure decode. Please configure your .env');
+          const decoded = this.jwtService.decode(token) as any;
+          if (decoded && (decoded.sub || decoded.email)) {
+            request['user'] = { sub: decoded.sub || decoded.email, username: decoded.email || decoded.sub };
+            return true;
+          }
           throw new UnauthorizedException('Invalid token');
         }
-      } catch {
+
+        const payload = await this.jwtService.verifyAsync(token, {
+          secret: process.env.SUPABASE_JWT_SECRET,
+        });
+        
+        if (payload && (payload.sub || payload.email)) {
+          request['user'] = { sub: payload.sub || payload.email, username: payload.email || payload.sub };
+        } else {
+          throw new UnauthorizedException('Invalid Supabase token payload');
+        }
+      } catch (err) {
         throw new UnauthorizedException('Invalid token');
       }
     }

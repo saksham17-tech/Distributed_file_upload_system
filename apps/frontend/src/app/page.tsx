@@ -38,7 +38,7 @@ export default function Dashboard() {
   const [files, setFiles] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<string>('My Files');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [storage, setStorage] = useState<{ usedBytes: number; limitBytes: number }>({ usedBytes: 0, limitBytes: 20 * 1024 * 1024 * 1024 });
+  const [storage, setStorage] = useState<{ usedBytes: number; limitBytes: number }>({ usedBytes: 0, limitBytes: 0 });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const fetchStorage = async (jwt: string) => {
@@ -68,24 +68,11 @@ export default function Dashboard() {
   useEffect(() => {
     async function setup() {
       try {
-        const authRes = await axios.post("http://localhost:3001/auth/login", { username: "demo-user" });
-        const jwt = authRes.data.access_token;
-        setToken(jwt);
-        setUserEmail("demo-user@nexusdrive.io");
+        // Wait for user to log in manually via AuthModal
+        // Removed auto-login logic to enforce real authentication
+        setUserEmail("Guest");
 
-        const newSocket = io("http://localhost:3001", {
-          auth: { token: jwt },
-        });
-
-        newSocket.on("file.available", (data) => {
-          console.log("File available event from Kafka!", data);
-          setUploadProgress(100);
-          fetchFiles(jwt);
-          setTimeout(() => setIsUploading(false), 3000);
-        });
-
-        setSocket(newSocket);
-        await fetchFiles(jwt);
+        // Do not fetch files or init socket until token is available
       } catch (err) {
         console.error("Failed to setup auth/sockets:", err);
       }
@@ -294,17 +281,17 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-2">
               <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Storage</span>
               <span className="text-xs font-medium text-blue-400">
-                {Math.min(100, Math.round((storage.usedBytes / (storage.limitBytes || 1)) * 100))}%
+                {storage.limitBytes ? Math.min(100, Math.round((storage.usedBytes / storage.limitBytes) * 100)) : 0}%
               </span>
             </div>
             <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
               <div 
                 className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500" 
-                style={{ width: `${Math.min(100, Math.round((storage.usedBytes / (storage.limitBytes || 1)) * 100))}%` }}
+                style={{ width: `${storage.limitBytes ? Math.min(100, Math.round((storage.usedBytes / storage.limitBytes) * 100)) : 0}%` }}
               />
             </div>
             <p className="text-[11px] text-neutral-400 mt-2">
-              {(storage.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(storage.limitBytes / (1024 * 1024 * 1024)).toFixed(0)} GB used
+              {(storage.usedBytes / (1024 * 1024)).toFixed(1)} MB of {storage.limitBytes ? (storage.limitBytes / (1024 * 1024 * 1024)).toFixed(0) : 0} GB used
             </p>
           </div>
 
@@ -395,11 +382,22 @@ export default function Dashboard() {
               if (activeTab === 'Starred') return f.isStarred && !f.isDeleted;
               if (activeTab === 'Trash') return f.isDeleted;
               return !f.isDeleted;
-            }).length === 0 && (
+            }).length === 0 && activeTab !== 'Computers' && (
               <div className="col-span-full py-24 flex flex-col items-center justify-center text-neutral-400 bg-neutral-900/30 rounded-3xl border border-dashed border-neutral-800 backdrop-blur-xl">
                 <Cloud className="w-14 h-14 mb-4 text-neutral-600" />
                 <p className="text-lg font-semibold text-white">No files found in {activeTab}</p>
                 <p className="text-xs text-neutral-500 mt-1">Upload a file or change your filter views.</p>
+              </div>
+            )}
+
+            {activeTab === 'Computers' && (
+              <div className="col-span-full py-24 flex flex-col items-center justify-center text-neutral-400 bg-neutral-900/30 rounded-3xl border border-dashed border-neutral-800 backdrop-blur-xl">
+                <HardDrive className="w-14 h-14 mb-4 text-blue-500/50" />
+                <p className="text-lg font-semibold text-white">No Computers Linked</p>
+                <p className="text-xs text-neutral-500 mt-1">Download the NexusDrive Desktop App to sync files from your local machine.</p>
+                <button className="mt-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-500/20 transition-all">
+                  Download App
+                </button>
               </div>
             )}
           </div>

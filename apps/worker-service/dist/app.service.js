@@ -22,6 +22,8 @@ let AppService = class AppService {
         await this.consumer.subscribe({ topic: 'upload.completed', fromBeginning: false });
         await this.consumer.run({
             eachMessage: async ({ topic, partition, message }) => {
+                if (!message.value)
+                    return;
                 const data = JSON.parse(message.value.toString());
                 console.log(`Worker processing upload: ${data.fileId}`);
                 await new Promise(resolve => setTimeout(resolve, 2000));

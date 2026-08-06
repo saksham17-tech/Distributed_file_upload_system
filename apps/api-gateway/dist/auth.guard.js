@@ -31,15 +31,26 @@ let AuthGuard = class AuthGuard {
         }
         catch {
             try {
-                const decoded = this.jwtService.decode(token);
-                if (decoded && (decoded.sub || decoded.email)) {
-                    request['user'] = { sub: decoded.sub || decoded.email, username: decoded.email || decoded.sub };
-                }
-                else {
+                if (!process.env.SUPABASE_JWT_SECRET) {
+                    console.warn('SUPABASE_JWT_SECRET is not set, falling back to insecure decode. Please configure your .env');
+                    const decoded = this.jwtService.decode(token);
+                    if (decoded && (decoded.sub || decoded.email)) {
+                        request['user'] = { sub: decoded.sub || decoded.email, username: decoded.email || decoded.sub };
+                        return true;
+                    }
                     throw new common_1.UnauthorizedException('Invalid token');
                 }
+                const payload = await this.jwtService.verifyAsync(token, {
+                    secret: process.env.SUPABASE_JWT_SECRET,
+                });
+                if (payload && (payload.sub || payload.email)) {
+                    request['user'] = { sub: payload.sub || payload.email, username: payload.email || payload.sub };
+                }
+                else {
+                    throw new common_1.UnauthorizedException('Invalid Supabase token payload');
+                }
             }
-            catch {
+            catch (err) {
                 throw new common_1.UnauthorizedException('Invalid token');
             }
         }

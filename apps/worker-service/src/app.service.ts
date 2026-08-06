@@ -17,6 +17,7 @@ export class AppService implements OnModuleInit, OnModuleDestroy {
 
     await this.consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
+        if (!message.value) return;
         const data = JSON.parse(message.value.toString());
         console.log(`Worker processing upload: ${data.fileId}`);
 
