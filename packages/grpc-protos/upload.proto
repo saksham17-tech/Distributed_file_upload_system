@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package upload;
+
+service UploadService {
+  rpc InitUpload (InitRequest) returns (InitResponse);
+  rpc CompleteUpload (CompleteRequest) returns (CompleteResponse);
+  rpc GeneratePresignedUrls (UrlRequest) returns (UrlResponse);
+  rpc GetDownloadUrl (DownloadRequest) returns (DownloadResponse);
+}
+
+message InitRequest {
+  string file_hash = 1;
+  int64 file_size = 2;
+  string user_id = 3;
+  string filename = 4;
+}
+
+message InitResponse {
+  bool exists = 1;
+  string file_id = 2;
+  string upload_id = 3;
+}
+
+message UrlRequest {
+  string upload_id = 1;
+  int32 chunks_count = 2;
+}
+
+message UrlResponse {
+  repeated string presigned_urls = 1;
+}
+
+message CompleteRequest {
+  string upload_id = 1;
+  repeated string etags = 2;
+}
+
+message CompleteResponse {
+  bool success = 1;
+  string file_id = 2;
+}
+
+message DownloadRequest {
+  string file_id = 1;
+}
+
+message DownloadResponse {
+  string download_url = 1;
+}

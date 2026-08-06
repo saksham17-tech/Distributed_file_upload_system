@@ -1,0 +1,9 @@
+{
+  "name": "@upload-system/grpc-protos",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo 'No dev server'"
+  }
+}

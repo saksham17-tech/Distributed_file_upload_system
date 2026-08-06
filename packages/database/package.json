@@ -1,0 +1,17 @@
+{
+  "name": "@upload-system/database",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "dev": "echo 'No dev server'"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.0.0"
+  }
+}
