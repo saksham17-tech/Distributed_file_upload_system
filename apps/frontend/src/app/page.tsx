@@ -20,7 +20,6 @@ import {
   HardDrive,
   LogOut,
   User as UserIcon,
-  Sparkles,
   Shield,
   Layers
 } from "lucide-react";
@@ -31,7 +30,7 @@ export default function Dashboard() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [token, setToken] = useState<string>('');
-  const [userEmail, setUserEmail] = useState<string>('demo-user@nexusdrive.io');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [currentFileName, setCurrentFileName] = useState('');
   const [currentFileSize, setCurrentFileSize] = useState(0);
@@ -69,9 +68,6 @@ export default function Dashboard() {
     async function setup() {
       try {
         // Wait for user to log in manually via AuthModal
-        // Removed auto-login logic to enforce real authentication
-        setUserEmail("Guest");
-
         // Do not fetch files or init socket until token is available
       } catch (err) {
         console.error("Failed to setup auth/sockets:", err);
@@ -211,7 +207,9 @@ export default function Dashboard() {
     if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
     } else if (e.type === "dragleave") {
-      setDragActive(false);
+      if (e.currentTarget && !e.currentTarget.contains(e.relatedTarget as Node)) {
+        setDragActive(false);
+      }
     }
   };
 
@@ -229,7 +227,7 @@ export default function Dashboard() {
       {/* Dynamic Ambient Background Glows for Glassmorphism */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-cyan-600/10 rounded-full blur-[160px] pointer-events-none" />
-      <div className="absolute top-1/3 right-10 w-[400px] h-[400px] bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/3 right-10 w-[400px] h-[400px] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Auth Modal */}
       <AuthModal
@@ -242,7 +240,7 @@ export default function Dashboard() {
       <aside className="w-64 bg-neutral-950/80 backdrop-blur-2xl border-r border-neutral-800/80 flex flex-col pt-6 pb-4 z-20 shadow-2xl">
         <div className="px-6 mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30 border border-white/20">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30 border border-white/20">
               <Cloud className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold tracking-tight text-white drop-shadow-sm">NexusDrive</span>
@@ -252,6 +250,10 @@ export default function Dashboard() {
         <div className="px-4 mb-6">
           <button
             onClick={() => {
+              if (!token) {
+                setIsAuthModalOpen(true);
+                return;
+              }
               const input = document.createElement('input');
               input.type = 'file';
               input.onchange = (e: any) => {
@@ -261,7 +263,7 @@ export default function Dashboard() {
               };
               input.click();
             }}
-            className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 text-white rounded-xl py-3 px-4 flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25 border border-white/20 active:scale-[0.98]"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 transition-all duration-300 text-white rounded-xl py-3 px-4 flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25 border border-white/20 active:scale-[0.98]"
           >
             <UploadCloud className="w-5 h-5" />
             <span>New Upload</span>
@@ -286,7 +288,7 @@ export default function Dashboard() {
             </div>
             <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
               <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500" 
+                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500" 
                 style={{ width: `${storage.limitBytes ? Math.min(100, Math.round((storage.usedBytes / storage.limitBytes) * 100)) : 0}%` }}
               />
             </div>
@@ -295,21 +297,30 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div 
-            onClick={() => setIsAuthModalOpen(true)}
-            className="flex items-center gap-3 p-2.5 rounded-2xl bg-neutral-900/60 hover:bg-neutral-900 backdrop-blur-xl border border-neutral-800 transition-all cursor-pointer group"
-          >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center font-bold text-xs shadow-md border border-white/10">
-              {userEmail[0].toUpperCase()}
+          {userEmail ? (
+            <div 
+              className="flex items-center gap-3 p-2.5 rounded-2xl bg-neutral-900/60 hover:bg-neutral-900 backdrop-blur-xl border border-neutral-800 transition-all cursor-pointer group"
+            >
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center font-bold text-xs shadow-md border border-white/10">
+                {userEmail[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-white truncate">{userEmail}</p>
+                <p className="text-[10px] text-blue-400 font-light flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Supabase Auth
+                </p>
+              </div>
+              <UserIcon className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white truncate">{userEmail}</p>
-              <p className="text-[10px] text-blue-400 font-light flex items-center gap-1">
-                <Shield className="w-3 h-3" /> Supabase Auth
-              </p>
-            </div>
-            <UserIcon className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
-          </div>
+          ) : (
+            <button 
+              onClick={() => setIsAuthModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all shadow-lg shadow-blue-500/25 border border-white/10"
+            >
+              <Shield className="w-4 h-4" />
+              Sign In / Sign Up
+            </button>
+          )}
         </div>
       </aside>
 
@@ -345,7 +356,7 @@ export default function Dashboard() {
           onDrop={handleDrop}
         >
           {dragActive && (
-            <div className="absolute inset-0 z-50 bg-blue-500/10 backdrop-blur-md border-2 border-blue-400 border-dashed rounded-3xl m-6 flex items-center justify-center">
+            <div className="absolute inset-0 z-50 bg-blue-500/10 backdrop-blur-md border-2 border-blue-400 border-dashed rounded-3xl m-6 flex items-center justify-center pointer-events-none">
               <div className="bg-slate-900/80 px-10 py-8 rounded-3xl shadow-2xl border border-white/20 flex flex-col items-center backdrop-blur-2xl">
                 <UploadCloud className="w-14 h-14 text-blue-400 mb-4 animate-bounce" />
                 <h3 className="text-2xl font-bold text-white">Drop files to upload</h3>
@@ -395,7 +406,10 @@ export default function Dashboard() {
                 <HardDrive className="w-14 h-14 mb-4 text-blue-500/50" />
                 <p className="text-lg font-semibold text-white">No Computers Linked</p>
                 <p className="text-xs text-neutral-500 mt-1">Download the NexusDrive Desktop App to sync files from your local machine.</p>
-                <button className="mt-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-500/20 transition-all">
+                <button 
+                  onClick={() => alert("NexusDrive Desktop App download link will be available soon!")}
+                  className="mt-6 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-500/20 transition-all cursor-pointer"
+                >
                   Download App
                 </button>
               </div>
@@ -446,7 +460,7 @@ export default function Dashboard() {
                     initial={{ width: 0 }}
                     animate={{ width: `${uploadProgress}%` }}
                     className={`h-full rounded-full transition-all duration-300 ${
-                      uploadProgress === 100 ? "bg-emerald-500" : "bg-gradient-to-r from-blue-500 to-indigo-500"
+                      uploadProgress === 100 ? "bg-emerald-500" : "bg-gradient-to-r from-blue-500 to-blue-600"
                     }`}
                   />
                 </div>
@@ -465,7 +479,7 @@ function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNo
       onClick={onClick}
       className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-all ${
         active 
-          ? "bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30 text-white font-semibold shadow-lg shadow-blue-500/10" 
+          ? "bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 text-white font-semibold shadow-lg shadow-blue-500/10" 
           : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
       }`}
     >

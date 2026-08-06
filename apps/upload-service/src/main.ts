@@ -8,7 +8,7 @@ async function bootstrap() {
     transport: Transport.GRPC,
     options: {
       package: 'upload',
-      protoPath: join(__dirname, '../../../../packages/grpc-protos/upload.proto'),
+      protoPath: join(__dirname, '../../../packages/grpc-protos/upload.proto'),
       url: '0.0.0.0:50051',
     },
   });

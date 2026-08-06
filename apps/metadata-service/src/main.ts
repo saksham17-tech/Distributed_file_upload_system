@@ -8,7 +8,7 @@ async function bootstrap() {
     transport: Transport.GRPC,
     options: {
       package: 'metadata',
-      protoPath: join(__dirname, '../../../../packages/grpc-protos/metadata.proto'),
+      protoPath: join(__dirname, '../../../packages/grpc-protos/metadata.proto'),
       url: '0.0.0.0:50052', // Listening on port 50052 for metadata
     },
   });

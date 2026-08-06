@@ -12,7 +12,7 @@ import { join } from 'path';
         transport: Transport.GRPC,
         options: {
           package: 'metadata',
-          protoPath: join(__dirname, '../../../../packages/grpc-protos/metadata.proto'),
+          protoPath: join(__dirname, '../../../packages/grpc-protos/metadata.proto'),
           url: 'localhost:50052', // Metadata service runs on 50052
         },
       },
