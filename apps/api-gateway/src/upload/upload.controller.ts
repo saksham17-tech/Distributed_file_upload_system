@@ -36,10 +36,13 @@ export class UploadController implements OnModuleInit {
     return this.uploadService.completeUpload(body);
   }
 
-  @Get('download/*')
+  @Get('download/*path')
   getDownloadUrl(@Req() req: any) {
     // extract full key from wildcard path
-    const fileId = req.params[0];
+    const raw = req.params.path;
+    let fileId: string = Array.isArray(raw) ? raw.join('/') : raw;
+    // File lists expose the id without the "<userId>/" key prefix
+    if (!fileId.includes('/')) fileId = `${req.user.sub}/${fileId}`;
     return this.uploadService.getDownloadUrl({ fileId });
   }
 }

@@ -6,6 +6,15 @@ import { PrismaService } from './prisma.service';
 export class AppController {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Auth is external (JWT/Supabase), so lazily create the local User row that FileOwnership references.
+  private async ensureUser(userId: string) {
+    await this.prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: { id: userId, email: `${userId}@local`, passwordHash: 'external-auth' }
+    });
+  }
+
   @GrpcMethod('MetadataService', 'CheckFileExists')
   async checkFileExists(data: { fileHash: string; fileSize: number; userId: string }) {
     const content = await this.prisma.content.findUnique({
@@ -13,6 +22,7 @@ export class AppController {
     });
 
     if (content) {
+      await this.ensureUser(data.userId);
       // Deduplication hit!
       const ownership = await this.prisma.fileOwnership.create({
         data: {
@@ -31,6 +41,7 @@ export class AppController {
 
   @GrpcMethod('MetadataService', 'RegisterUploadSession')
   async registerUploadSession(data: { fileId: string; userId: string; filename: string; fileSize: number }) {
+    await this.ensureUser(data.userId);
     const ownership = await this.prisma.fileOwnership.create({
       data: {
         id: data.fileId.split('/').pop(),

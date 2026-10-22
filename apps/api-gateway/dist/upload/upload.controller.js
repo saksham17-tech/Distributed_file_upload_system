@@ -34,7 +34,10 @@ let UploadController = class UploadController {
         return this.uploadService.completeUpload(body);
     }
     getDownloadUrl(req) {
-        const fileId = req.params[0];
+        const raw = req.params.path;
+        let fileId = Array.isArray(raw) ? raw.join('/') : raw;
+        if (!fileId.includes('/'))
+            fileId = `${req.user.sub}/${fileId}`;
         return this.uploadService.getDownloadUrl({ fileId });
     }
 };
@@ -62,7 +65,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], UploadController.prototype, "completeUpload", null);
 __decorate([
-    (0, common_1.Get)('download/*'),
+    (0, common_1.Get)('download/*path'),
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),

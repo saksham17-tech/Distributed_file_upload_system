@@ -9,7 +9,7 @@ async function bootstrap() {
         transport: microservices_1.Transport.GRPC,
         options: {
             package: 'metadata',
-            protoPath: (0, path_1.join)(__dirname, '../../../../packages/grpc-protos/metadata.proto'),
+            protoPath: (0, path_1.join)(__dirname, '../../../packages/grpc-protos/metadata.proto'),
             url: '0.0.0.0:50052',
         },
     });

@@ -99,7 +99,7 @@ Access the services:
 - **API Gateway**: `http://localhost:3001`
 - **MinIO Console**: `http://localhost:9001` (User: `admin`, Pass: `password123`)
 - **Jaeger Tracing**: `http://localhost:16686`
-- **Grafana Metrics**: `http://localhost:3000`
+- **Grafana Metrics**: `http://localhost:3002`
 
 ---
 

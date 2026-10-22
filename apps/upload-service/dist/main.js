@@ -9,7 +9,7 @@ async function bootstrap() {
         transport: microservices_1.Transport.GRPC,
         options: {
             package: 'upload',
-            protoPath: (0, path_1.join)(__dirname, '../../../../packages/grpc-protos/upload.proto'),
+            protoPath: (0, path_1.join)(__dirname, '../../../packages/grpc-protos/upload.proto'),
             url: '0.0.0.0:50051',
         },
     });

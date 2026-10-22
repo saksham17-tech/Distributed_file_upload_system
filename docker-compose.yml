@@ -79,7 +79,7 @@ services:
     image: grafana/grafana-oss:latest
     container_name: upload-system-grafana
     ports:
-      - "3000:3000"
+      - "3002:3000"
     depends_on:
       - prometheus
     restart: always

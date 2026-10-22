@@ -24,7 +24,7 @@ exports.AppModule = AppModule = __decorate([
                     transport: microservices_1.Transport.GRPC,
                     options: {
                         package: 'metadata',
-                        protoPath: (0, path_1.join)(__dirname, '../../../../packages/grpc-protos/metadata.proto'),
+                        protoPath: (0, path_1.join)(__dirname, '../../../packages/grpc-protos/metadata.proto'),
                         url: 'localhost:50052',
                     },
                 },

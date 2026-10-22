@@ -2,6 +2,7 @@ import { PrismaService } from './prisma.service';
 export declare class AppController {
     private readonly prisma;
     constructor(prisma: PrismaService);
+    private ensureUser;
     checkFileExists(data: {
         fileHash: string;
         fileSize: number;

@@ -18,11 +18,19 @@ let AppController = class AppController {
     constructor(prisma) {
         this.prisma = prisma;
     }
+    async ensureUser(userId) {
+        await this.prisma.user.upsert({
+            where: { id: userId },
+            update: {},
+            create: { id: userId, email: `${userId}@local`, passwordHash: 'external-auth' }
+        });
+    }
     async checkFileExists(data) {
         const content = await this.prisma.content.findUnique({
             where: { hash: data.fileHash }
         });
         if (content) {
+            await this.ensureUser(data.userId);
             const ownership = await this.prisma.fileOwnership.create({
                 data: {
                     userId: data.userId,
@@ -37,6 +45,7 @@ let AppController = class AppController {
         return { exists: false, fileId: '' };
     }
     async registerUploadSession(data) {
+        await this.ensureUser(data.userId);
         const ownership = await this.prisma.fileOwnership.create({
             data: {
                 id: data.fileId.split('/').pop(),
