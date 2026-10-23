@@ -1,22 +1,31 @@
 {
-  "name": "distributed-upload-system",
-  "version": "1.0.0",
+  "name": "dfup",
+  "version": "3.0.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "description": "Resumable chunked file upload — Next.js 15 App Router + Supabase",
   "scripts": {
-    "dev": "npm run dev --workspaces",
-    "build": "npm run build --workspaces",
-    "start": "npm run start --workspaces",
-    "infra:up": "docker-compose up -d",
-    "infra:down": "docker-compose down",
-    "db:generate": "npm run db:generate --workspace=@upload-system/database",
-    "db:push": "npm run db:push --workspace=@upload-system/database"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "axios": "^1.19.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^13.0.0",
+    "lucide-react": "^0.475.0",
+    "next": "15.5.22",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "turbo": "^2.0.0"
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

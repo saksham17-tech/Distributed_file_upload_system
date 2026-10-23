@@ -1,48 +1,98 @@
-import { Controller, Post, Body, Inject, OnModuleInit, UseGuards, Req, Get, Param } from '@nestjs/common';
-import type { ClientGrpc } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { AuthGuard } from '../auth.guard';
-
-interface UploadService {
-  initUpload(data: { fileHash: string; fileSize: number; userId: string; filename: string }): Observable<any>;
-  generatePresignedUrls(data: { uploadId: string; chunksCount: number; fileId: string }): Observable<any>;
-  completeUpload(data: { uploadId: string; etags: string[]; fileId: string }): Observable<any>;
-  getDownloadUrl(data: { fileId: string }): Observable<any>;
-}
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+  ParseIntPipe,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { UploadService } from './upload.service';
 
 @Controller('upload')
-@UseGuards(AuthGuard)
-export class UploadController implements OnModuleInit {
-  private uploadService: UploadService;
+export class UploadController {
+  constructor(private readonly uploadService: UploadService) {}
 
-  constructor(@Inject('UPLOAD_PACKAGE') private client: ClientGrpc) {}
-
-  onModuleInit() {
-    this.uploadService = this.client.getService<UploadService>('UploadService');
-  }
-
+  /**
+   * POST /upload/init
+   * Body: { filename, totalSize, totalChunks, mimeType }
+   * Returns: { fileId }
+   */
   @Post('init')
-  initUpload(@Body() body: { fileHash: string; fileSize: number; filename: string }, @Req() req: any) {
-    return this.uploadService.initUpload({ ...body, userId: req.user.sub });
+  async init(
+    @Body()
+    body: {
+      filename: string;
+      totalSize: number;
+      totalChunks: number;
+      mimeType?: string;
+      userId?: string;
+    },
+  ) {
+    return this.uploadService.initUpload({
+      filename: body.filename,
+      totalSize: Number(body.totalSize),
+      totalChunks: Number(body.totalChunks),
+      mimeType: body.mimeType || 'application/octet-stream',
+      userId: body.userId,
+    });
   }
 
-  @Post('presigned-urls')
-  getUrls(@Body() body: { uploadId: string; chunksCount: number; fileId: string }) {
-    return this.uploadService.generatePresignedUrls(body);
+  /** GET /upload/files/list — list completed files (static path before :fileId) */
+  @Get('files/list')
+  async listFiles() {
+    return this.uploadService.listFiles();
   }
 
-  @Post('complete')
-  completeUpload(@Body() body: { uploadId: string; etags: string[]; fileId: string }) {
-    return this.uploadService.completeUpload(body);
+  /** GET /upload/usage/quota — current storage usage vs 1 GB cap */
+  @Get('usage/quota')
+  async usage() {
+    return this.uploadService.getUsage();
   }
 
-  @Get('download/*path')
-  getDownloadUrl(@Req() req: any) {
-    // extract full key from wildcard path
-    const raw = req.params.path;
-    let fileId: string = Array.isArray(raw) ? raw.join('/') : raw;
-    // File lists expose the id without the "<userId>/" key prefix
-    if (!fileId.includes('/')) fileId = `${req.user.sub}/${fileId}`;
-    return this.uploadService.getDownloadUrl({ fileId });
+  /**
+   * GET /upload/:fileId/status
+   * Returns: { status, totalChunks, uploadedChunks: number[] }
+   */
+  @Get(':fileId/status')
+  async status(@Param('fileId') fileId: string) {
+    return this.uploadService.getStatus(fileId);
+  }
+
+  /**
+   * POST /upload/:fileId/chunk?chunkIndex=0&checksum=abc…
+   * Multipart field name: "chunk" (binary)
+   */
+  @Post(':fileId/chunk')
+  @UseInterceptors(
+    FileInterceptor('chunk', {
+      storage: memoryStorage(),
+      limits: { fileSize: 12 * 1024 * 1024 }, // 12 MB safety margin over 5 MB chunks
+    }),
+  )
+  async uploadChunk(
+    @Param('fileId') fileId: string,
+    @Query('chunkIndex', ParseIntPipe) chunkIndex: number,
+    @Query('checksum') checksum: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Missing chunk file (field name: "chunk")');
+    }
+    if (!checksum) {
+      throw new BadRequestException('Missing checksum query param');
+    }
+
+    return this.uploadService.uploadChunk(
+      fileId,
+      chunkIndex,
+      checksum,
+      file.buffer,
+    );
   }
 }

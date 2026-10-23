@@ -8,28 +8,16 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UploadModule = void 0;
 const common_1 = require("@nestjs/common");
-const microservices_1 = require("@nestjs/microservices");
 const upload_controller_1 = require("./upload.controller");
-const path_1 = require("path");
+const upload_service_1 = require("./upload.service");
+const prisma_service_1 = require("../prisma.service");
 let UploadModule = class UploadModule {
 };
 exports.UploadModule = UploadModule;
 exports.UploadModule = UploadModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            microservices_1.ClientsModule.register([
-                {
-                    name: 'UPLOAD_PACKAGE',
-                    transport: microservices_1.Transport.GRPC,
-                    options: {
-                        package: 'upload',
-                        protoPath: (0, path_1.join)(__dirname, '../../../../packages/grpc-protos/upload.proto'),
-                        url: 'localhost:50051',
-                    },
-                },
-            ]),
-        ],
         controllers: [upload_controller_1.UploadController],
+        providers: [upload_service_1.UploadService, prisma_service_1.PrismaService],
     })
 ], UploadModule);
 //# sourceMappingURL=upload.module.js.map

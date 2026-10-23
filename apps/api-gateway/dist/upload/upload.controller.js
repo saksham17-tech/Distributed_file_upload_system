@@ -14,67 +14,84 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UploadController = void 0;
 const common_1 = require("@nestjs/common");
-const auth_guard_1 = require("../auth.guard");
+const platform_express_1 = require("@nestjs/platform-express");
+const multer_1 = require("multer");
+const upload_service_1 = require("./upload.service");
 let UploadController = class UploadController {
-    client;
-    uploadService;
-    constructor(client) {
-        this.client = client;
+    constructor(uploadService) {
+        this.uploadService = uploadService;
     }
-    onModuleInit() {
-        this.uploadService = this.client.getService('UploadService');
+    async init(body) {
+        return this.uploadService.initUpload({
+            filename: body.filename,
+            totalSize: Number(body.totalSize),
+            totalChunks: Number(body.totalChunks),
+            mimeType: body.mimeType || 'application/octet-stream',
+            userId: body.userId,
+        });
     }
-    initUpload(body, req) {
-        return this.uploadService.initUpload({ ...body, userId: req.user.sub });
+    async listFiles() {
+        return this.uploadService.listFiles();
     }
-    getUrls(body) {
-        return this.uploadService.generatePresignedUrls(body);
+    async usage() {
+        return this.uploadService.getUsage();
     }
-    completeUpload(body) {
-        return this.uploadService.completeUpload(body);
+    async status(fileId) {
+        return this.uploadService.getStatus(fileId);
     }
-    getDownloadUrl(req) {
-        const raw = req.params.path;
-        let fileId = Array.isArray(raw) ? raw.join('/') : raw;
-        if (!fileId.includes('/'))
-            fileId = `${req.user.sub}/${fileId}`;
-        return this.uploadService.getDownloadUrl({ fileId });
+    async uploadChunk(fileId, chunkIndex, checksum, file) {
+        if (!file?.buffer) {
+            throw new common_1.BadRequestException('Missing chunk file (field name: "chunk")');
+        }
+        if (!checksum) {
+            throw new common_1.BadRequestException('Missing checksum query param');
+        }
+        return this.uploadService.uploadChunk(fileId, chunkIndex, checksum, file.buffer);
     }
 };
 exports.UploadController = UploadController;
 __decorate([
     (0, common_1.Post)('init'),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Req)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
-    __metadata("design:returntype", void 0)
-], UploadController.prototype, "initUpload", null);
-__decorate([
-    (0, common_1.Post)('presigned-urls'),
-    __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], UploadController.prototype, "getUrls", null);
+    __metadata("design:returntype", Promise)
+], UploadController.prototype, "init", null);
 __decorate([
-    (0, common_1.Post)('complete'),
-    __param(0, (0, common_1.Body)()),
+    (0, common_1.Get)('files/list'),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], UploadController.prototype, "completeUpload", null);
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], UploadController.prototype, "listFiles", null);
 __decorate([
-    (0, common_1.Get)('download/*path'),
-    __param(0, (0, common_1.Req)()),
+    (0, common_1.Get)('usage/quota'),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], UploadController.prototype, "getDownloadUrl", null);
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], UploadController.prototype, "usage", null);
+__decorate([
+    (0, common_1.Get)(':fileId/status'),
+    __param(0, (0, common_1.Param)('fileId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UploadController.prototype, "status", null);
+__decorate([
+    (0, common_1.Post)(':fileId/chunk'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('chunk', {
+        storage: (0, multer_1.memoryStorage)(),
+        limits: { fileSize: 12 * 1024 * 1024 },
+    })),
+    __param(0, (0, common_1.Param)('fileId')),
+    __param(1, (0, common_1.Query)('chunkIndex', common_1.ParseIntPipe)),
+    __param(2, (0, common_1.Query)('checksum')),
+    __param(3, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number, String, Object]),
+    __metadata("design:returntype", Promise)
+], UploadController.prototype, "uploadChunk", null);
 exports.UploadController = UploadController = __decorate([
     (0, common_1.Controller)('upload'),
-    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
-    __param(0, (0, common_1.Inject)('UPLOAD_PACKAGE')),
-    __metadata("design:paramtypes", [Object])
+    __metadata("design:paramtypes", [upload_service_1.UploadService])
 ], UploadController);
 //# sourceMappingURL=upload.controller.js.map
