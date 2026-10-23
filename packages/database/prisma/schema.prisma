@@ -3,77 +3,45 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// User who owns files
-model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  role         String   @default("USER")
-  isPremium    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-
-  files FileOwnership[]
-}
-
-// Content Addressable Storage (CAS)
-// Actual underlying files, deduplicated by hash
-model Content {
-  hash       String   @id // SHA-256
-  sizeBytes  BigInt
-  storageKey String   // Where it's stored in MinIO/S3
-  createdAt  DateTime @default(now())
-  refCount   Int      @default(0) // Garbage collect when 0
-
-  files FileOwnership[]
-}
-
-// Maps a user to a specific content hash (allows multiple users to own the same file)
-model FileOwnership {
-  id           String   @id @default(uuid())
-  userId       String
-  contentHash  String?  // Nullable while uploading
-  originalName String
-  mimeType     String
-  fileSize     BigInt   @default(0)
-  isStarred    Boolean  @default(false)
-  isDeleted    Boolean  @default(false)
-  status       FileStatus @default(UPLOADING)
-  createdAt    DateTime @default(now())
-
-  user    User     @relation(fields: [userId], references: [id])
-  content Content? @relation(fields: [contentHash], references: [hash])
-
-  uploadSession UploadSession?
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum FileStatus {
   UPLOADING
-  PROCESSING
-  AVAILABLE
+  COMPLETED
   FAILED
 }
 
-model UploadSession {
-  id              String   @id @default(uuid())
-  fileOwnershipId String   @unique
-  totalChunks     Int
-  uploadedChunks  Int      @default(0)
-  status          UploadStatus @default(INIT)
-  expiresAt       DateTime
-  createdAt       DateTime @default(now())
+model File {
+  id          String     @id @default(uuid())
+  userId      String?
+  filename    String
+  totalSize   BigInt
+  totalChunks Int
+  mimeType    String
+  status      FileStatus @default(UPLOADING)
+  storagePath String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  file FileOwnership @relation(fields: [fileOwnershipId], references: [id])
+  chunks FileChunk[]
+
+  @@index([status])
+  @@index([userId])
 }
 
-enum UploadStatus {
-  INIT
-  UPLOADING
-  PAUSED
-  MERGING
-  COMPLETED
-  CANCELLED
+model FileChunk {
+  id         String   @id @default(uuid())
+  fileId     String
+  chunkIndex Int
+  chunkSize  Int
+  checksum   String
+  uploadedAt DateTime @default(now())
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, chunkIndex])
+  @@index([fileId])
 }

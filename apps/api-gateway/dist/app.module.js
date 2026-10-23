@@ -8,39 +8,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
-const app_controller_1 = require("./app.controller");
-const app_service_1 = require("./app.service");
 const upload_module_1 = require("./upload/upload.module");
-const jwt_1 = require("@nestjs/jwt");
-const notifications_gateway_1 = require("./notifications.gateway");
-const microservices_1 = require("@nestjs/microservices");
-const path_1 = require("path");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            jwt_1.JwtModule.register({
-                global: true,
-                secret: 'super-secret-jwt-key',
-                signOptions: { expiresIn: '1d' },
-            }),
-            microservices_1.ClientsModule.register([
-                {
-                    name: 'METADATA_PACKAGE',
-                    transport: microservices_1.Transport.GRPC,
-                    options: {
-                        package: 'metadata',
-                        protoPath: (0, path_1.join)(__dirname, '../../../packages/grpc-protos/metadata.proto'),
-                        url: 'localhost:50052',
-                    },
-                },
-            ]),
-            upload_module_1.UploadModule,
-        ],
-        controllers: [app_controller_1.AppController],
-        providers: [app_service_1.AppService, notifications_gateway_1.NotificationsGateway],
+        imports: [upload_module_1.UploadModule],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

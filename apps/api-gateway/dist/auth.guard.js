@@ -13,7 +13,6 @@ exports.AuthGuard = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 let AuthGuard = class AuthGuard {
-    jwtService;
     constructor(jwtService) {
         this.jwtService = jwtService;
     }

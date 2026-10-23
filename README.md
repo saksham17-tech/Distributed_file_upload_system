@@ -1,158 +1,73 @@
-# Enterprise Distributed File Upload System (NexusDrive)
+# DFUP — Single Next.js App (Supabase)
 
-A production-grade, fault-tolerant, high-availability distributed cloud storage and multipart file upload system built with **NestJS**, **gRPC**, **Kafka**, **MinIO (S3)**, **PostgreSQL (Prisma)**, **Redis**, and **Next.js 15 (React)**.
+Zero-Docker, zero-NestJS resumable file uploader.
 
-Designed for high throughput, massive scale, zero-downtime uploads, and instant Content-Addressable Storage (CAS) deduplication.
+- **Frontend + API** live in one Next.js 15 App Router process
+- **Supabase** PostgreSQL (`files`, `file_chunks`) + Storage bucket `dfup`
+- 5 MB chunks, SHA-256, 180 s timeout, 3× exponential backoff, pause/resume
+- Hard **1 GB** free-tier quota
 
----
+## Setup
 
-## Architecture Diagram
+1. Create tables in Supabase SQL editor (snake_case):
 
-```mermaid
-flowchart TD
-    Client["React Next.js 15 Client"]
-    Gateway["API Gateway (HTTP / WebSockets :3001)"]
-    UploadSvc["Upload Microservice (gRPC :50051)"]
-    MetaSvc["Metadata Microservice (gRPC :50052)"]
-    WorkerSvc["Async Worker Microservice"]
-    MinIO["MinIO Object Storage (S3 API :9000)"]
-    Postgres[(PostgreSQL Database)]
-    Kafka{{Apache Kafka Event Bus}}
+```sql
+create type file_status as enum ('UPLOADING', 'COMPLETED', 'FAILED');
 
-    Client -->|1. Auth & Init Upload| Gateway
-    Gateway -->|gRPC| MetaSvc
-    MetaSvc -->|Check Hash / CAS| Postgres
-    
-    Gateway -->|2. Get Presigned URLs| UploadSvc
-    UploadSvc -->|S3 Presigner API| MinIO
-    
-    Client -->|3. Concurrent PUT Chunks| MinIO
-    Client -->|4. Complete Upload| Gateway
-    Gateway -->|gRPC Complete| UploadSvc
-    UploadSvc -->|Publish upload.completed| Kafka
-    
-    Kafka -->|Consume upload.completed| WorkerSvc
-    WorkerSvc -->|Processing & Publish file.available| Kafka
-    Kafka -->|Consume file.available| Gateway
-    Gateway -->|5. WebSocket Notification| Client
+create table files (
+  id uuid primary key default gen_random_uuid(),
+  filename text not null,
+  total_size bigint not null,
+  total_chunks int not null,
+  mime_type text not null default 'application/octet-stream',
+  status file_status not null default 'UPLOADING',
+  storage_path text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table file_chunks (
+  id uuid primary key default gen_random_uuid(),
+  file_id uuid not null references files(id) on delete cascade,
+  chunk_index int not null,
+  chunk_size int not null,
+  checksum text not null,
+  uploaded_at timestamptz default now(),
+  unique (file_id, chunk_index)
+);
+
+create index on file_chunks (file_id);
 ```
 
----
+2. Create Storage bucket named **`dfup`**.
 
-## Enterprise System Highlights
+3. Copy `.env.example` → `.env.local` and set `SUPABASE_SERVICE_ROLE_KEY`.
 
-### ⚡ Direct S3 Multipart Uploading
-- Uploads bypass API Gateway servers completely.
-- Files are sliced into 5MB chunks on the client and uploaded concurrently via HTTP `PUT` directly to MinIO/S3 using pre-signed URLs.
-- Handles massive multi-gigabyte files with low memory overhead on backend services.
-
-### 🧠 Content-Addressable Storage (CAS) Deduplication
-- Files are hashed on the client prior to initiation.
-- The `metadata-service` verifies whether the underlying content hash already exists in PostgreSQL.
-- If a match is found, the system performs instant deduplication hit—linking `FileOwnership` to existing `Content` without uploading a single byte!
-
-### 📡 Event-Driven Asynchronous Processing (Kafka)
-- Decouples storage finalization from worker processing.
-- Once MinIO completes multipart assembly, `upload-service` publishes `upload.completed` into Kafka.
-- Background `worker-service` nodes scale horizontally to perform heavy tasks (virus scanning, thumbnail generation, hash verification).
-
-### 🔔 Live WebSocket Updates
-- Real-time notification gateway using Socket.io and `@nestjs/websockets`.
-- When processing finishes, `file.available` events are consumed from Kafka and broadcast directly to active user sessions.
-
----
-
-## Workspace Structure
-
-```
-├── apps/
-│   ├── api-gateway/         # REST API, JWT Guard, Socket.io Gateway (:3001)
-│   ├── upload-service/      # S3 Pre-signing & Multipart Upload Orchestrator (gRPC :50051)
-│   ├── metadata-service/    # Prisma/PostgreSQL File Ownership & CAS Service (gRPC :50052)
-│   ├── worker-service/      # Async Kafka Consumer for file processing
-│   └── frontend/            # Next.js 15 React Dashboard (:3000)
-├── packages/
-│   ├── database/            # Prisma Schema & Client package
-│   └── grpc-protos/         # Shared Protocol Buffer definitions (.proto)
-├── docker-compose.yml       # Production Multi-Service Container Orchestration
-└── README.md
-```
-
----
-
-## 🛠️ Quick Start & Local Setup
-
-### Prerequisites
-- [Node.js v18+](https://nodejs.org/)
-- [Docker & Docker Desktop](https://www.docker.com/)
-
-### Option 1: One-Command Docker Setup (Recommended)
-
-Run the entire cluster (infrastructure + 5 microservices) in Docker containers:
-
-```bash
-docker compose up --build
-```
-
-Access the services:
-- **Next.js Dashboard**: `http://localhost:3000`
-- **API Gateway**: `http://localhost:3001`
-- **MinIO Console**: `http://localhost:9001` (User: `admin`, Pass: `password123`)
-- **Jaeger Tracing**: `http://localhost:16686`
-- **Grafana Metrics**: `http://localhost:3002`
-
----
-
-### Option 2: Local Development Setup
-
-#### 1. Install Workspace Dependencies
 ```bash
 npm install
-```
-
-#### 2. Start Infrastructure Containers
-```bash
-npm run infra:up
-```
-
-#### 3. Database Sync & Prisma Client Generation
-```bash
-npm run db:push
-```
-
-#### 4. Launch All Services concurrently
-```bash
 npm run dev
+# → http://localhost:3000
 ```
 
----
+## API (same origin)
 
-## 🔒 Environment Variables Reference
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/upload/init` | Quota check + create file row → `{ fileId }` |
+| POST | `/api/upload/:fileId/chunk?chunkIndex=&checksum=` | Binary chunk + SHA-256 |
+| GET | `/api/upload/:fileId/status` | `{ status, totalChunks, uploadedChunks[] }` |
 
-Copy `.env.example` to `.env`:
+## Project tree
 
-```env
-# Database
-DATABASE_URL="postgresql://admin:password@localhost:5432/upload_system?schema=public"
-
-# Storage
-MINIO_ENDPOINT="http://localhost:9000"
-MINIO_ACCESS_KEY="admin"
-MINIO_SECRET_KEY="password123"
-MINIO_BUCKET_NAME="uploads"
-
-# Event Bus
-KAFKA_BROKER="localhost:9092"
-
-# Security
-JWT_SECRET="super-secret-jwt-key"
 ```
-
----
-
-## 🧪 System Verification & Testing Features
-
-1. **Multi-Part Resumable Chunking**: Drag & drop any file; watch it chunk into 5MB parts and stream concurrently into MinIO.
-2. **Instant Instant Upload (Deduplication)**: Upload the exact same file twice. The second upload finishes instantly in <100ms via Content-Addressable Storage hit.
-3. **Dynamic Storage Meter**: Upload and delete files to observe real-time recalculation of total byte usage.
-4. **Direct Pre-signed Downloads**: Click the context menu on any file card to download directly from MinIO S3 via signed GET URLs.
+src/
+  app/
+    api/upload/init/route.ts
+    api/upload/[fileId]/chunk/route.ts
+    api/upload/[fileId]/status/route.ts
+    layout.tsx
+    page.tsx
+  components/FileUploader.tsx
+  lib/supabaseServer.ts
+  lib/upload.ts
+```

@@ -16,16 +16,14 @@ const common_1 = require("@nestjs/common");
 const kafkajs_1 = require("kafkajs");
 const jwt_1 = require("@nestjs/jwt");
 let NotificationsGateway = class NotificationsGateway {
-    jwtService;
-    server;
-    kafka = new kafkajs_1.Kafka({
-        clientId: 'api-gateway',
-        brokers: ['localhost:9092'],
-    });
-    consumer = this.kafka.consumer({ groupId: 'api-gateway-notifications' });
-    connectedUsers = new Map();
     constructor(jwtService) {
         this.jwtService = jwtService;
+        this.kafka = new kafkajs_1.Kafka({
+            clientId: 'api-gateway',
+            brokers: ['localhost:9092'],
+        });
+        this.consumer = this.kafka.consumer({ groupId: 'api-gateway-notifications' });
+        this.connectedUsers = new Map();
     }
     async onModuleInit() {
         await this.consumer.connect();

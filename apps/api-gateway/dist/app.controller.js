@@ -20,10 +20,6 @@ const auth_guard_1 = require("./auth.guard");
 const rxjs_1 = require("rxjs");
 const common_2 = require("@nestjs/common");
 let AppController = class AppController {
-    appService;
-    jwtService;
-    client;
-    metadataService;
     constructor(appService, jwtService, client) {
         this.appService = appService;
         this.jwtService = jwtService;
