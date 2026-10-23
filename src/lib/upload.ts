@@ -25,7 +25,7 @@ const API = '/api/upload';
 
 export type UploadState = {
   fileId: string | null;
-  status: 'idle' | 'init' | 'uploading' | 'paused' | 'completed' | 'error';
+  status: 'idle' | 'init' | 'uploading' | 'processing' | 'paused' | 'completed' | 'error';
   progress: number; // 0–100 (byte-level smooth)
   uploadedBytes: number;
   totalBytes: number;
@@ -403,7 +403,16 @@ export function createUploader(
 
     if (paused || aborted) return;
 
+    // All bytes are on the server — show processing while merge runs
+    set({
+      status: 'processing',
+      progress: 100,
+      uploadedBytes: file.size,
+    });
+
     // Wait for server-side merge before declaring success
+    // (the last chunk response already awaited mergeChunks on the server;
+    //  we still poll in case concurrent last chunks raced)
     const final = await apiStatus(id);
     if (
       final.status === 'COMPLETED' ||
