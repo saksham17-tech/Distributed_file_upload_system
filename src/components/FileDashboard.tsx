@@ -42,6 +42,7 @@ export default function FileDashboard() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -75,6 +76,35 @@ export default function FileDashboard() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const onDelete = useCallback(
+    async (fileId: string, filename: string) => {
+      const ok = window.confirm(
+        `Delete "${filename}" permanently from storage and database?`,
+      );
+      if (!ok) return;
+
+      setDeletingId(fileId);
+      setError(null);
+      try {
+        const res = await fetch(`/api/upload/files/${fileId}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t || `Delete failed (${res.status})`);
+        }
+        // Optimistic remove, then refresh quota + list
+        setFiles((prev) => prev.filter((f) => f.id !== fileId));
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [refresh],
+  );
 
   const usedPct = quota
     ? Math.min(100, (quota.usedBytes / quota.limitBytes) * 100)
@@ -124,7 +154,6 @@ export default function FileDashboard() {
         <p style={{ color: '#f66', fontSize: 13, marginBottom: 12 }}>{error}</p>
       )}
 
-      {/* Quota bar */}
       {quota && (
         <div style={{ marginBottom: '1.5rem' }}>
           <div
@@ -159,14 +188,20 @@ export default function FileDashboard() {
               }}
             />
           </div>
-          <p style={{ fontSize: 12, color: '#666', marginTop: 6, marginBottom: 0 }}>
+          <p
+            style={{
+              fontSize: 12,
+              color: '#666',
+              marginTop: 6,
+              marginBottom: 0,
+            }}
+          >
             {formatBytes(quota.remainingBytes)} remaining · {quota.fileCount}{' '}
             file(s) counting toward quota
           </p>
         </div>
       )}
 
-      {/* File list */}
       <h3 style={{ fontSize: 14, color: '#aaa', margin: '0 0 0.75rem' }}>
         Completed uploads
       </h3>
@@ -182,7 +217,7 @@ export default function FileDashboard() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
+              gap: 10,
               padding: '10px 0',
               borderBottom: '1px solid #222',
             }}
@@ -205,6 +240,7 @@ export default function FileDashboard() {
                 {f.createdAt ? ` · ${formatDate(f.createdAt)}` : ''}
               </div>
             </div>
+
             {f.downloadUrl ? (
               <a
                 href={f.downloadUrl}
@@ -228,6 +264,26 @@ export default function FileDashboard() {
                 No URL
               </span>
             )}
+
+            <button
+              type="button"
+              onClick={() => onDelete(f.id, f.filename)}
+              disabled={deletingId === f.id}
+              title="Delete file"
+              style={{
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: 'none',
+                background: deletingId === f.id ? '#553' : '#7f1d1d',
+                color: '#fecaca',
+                cursor: deletingId === f.id ? 'wait' : 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                flexShrink: 0,
+              }}
+            >
+              {deletingId === f.id ? 'Deleting…' : 'Delete'}
+            </button>
           </li>
         ))}
       </ul>

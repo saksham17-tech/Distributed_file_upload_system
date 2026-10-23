@@ -54,9 +54,14 @@ export default function FileUploader() {
   } = state;
 
   const isActive = status === 'uploading' || status === 'init';
+  const isProcessing = status === 'processing';
   const isPaused = status === 'paused';
   const isDone = status === 'completed';
   const isError = status === 'error';
+  // Bytes fully sent but server still merging
+  const isMerging =
+    isProcessing ||
+    (isActive && totalBytes > 0 && uploadedBytes >= totalBytes);
   /** Resume is available on both pause and recoverable error */
   const canResume = (isPaused || isError) && !!fileId && !!selectedName;
 
@@ -105,7 +110,7 @@ export default function FileUploader() {
         )}
       </label>
 
-      {(isActive || isPaused || isDone || isError) && (
+      {(isActive || isProcessing || isPaused || isDone || isError) && (
         <div style={{ marginTop: '1.25rem' }}>
           <div
             style={{
@@ -123,9 +128,11 @@ export default function FileUploader() {
                   ? '#e11'
                   : isDone
                     ? '#0a0'
-                    : isPaused
-                      ? '#c90'
-                      : '#3b82f6',
+                    : isMerging
+                      ? '#eab308'
+                      : isPaused
+                        ? '#c90'
+                        : '#3b82f6',
                 transition: 'width 300ms ease-out, background-color 300ms ease', /* smooth glide */
                 willChange: 'width',
               }}
@@ -149,9 +156,21 @@ export default function FileUploader() {
 
           <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
             Status:{' '}
-            <strong style={{ color: isDone ? '#4ade80' : '#ccc' }}>
-              {isDone ? 'Upload completed' : status}
-            </strong>
+            {isMerging && !isDone ? (
+              <span
+                style={{
+                  color: '#eab308',
+                  fontWeight: 600,
+                  animation: 'dfup-pulse 1.2s ease-in-out infinite',
+                }}
+              >
+                Processing and merging on server…
+              </span>
+            ) : (
+              <strong style={{ color: isDone ? '#4ade80' : '#ccc' }}>
+                {isDone ? 'Upload completed' : status}
+              </strong>
+            )}
             {fileId && (
               <>
                 {' '}
@@ -176,7 +195,7 @@ export default function FileUploader() {
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            {isActive && (
+            {isActive && !isMerging && (
               <button
                 type="button"
                 onClick={() => uploaderRef.current.pause()}
@@ -200,7 +219,7 @@ export default function FileUploader() {
               </button>
             )}
 
-            {(isActive || isPaused || isError) && (
+            {(isActive || isPaused || isError) && !isMerging && (
               <button
                 type="button"
                 onClick={() => {
@@ -211,6 +230,11 @@ export default function FileUploader() {
               >
                 Cancel
               </button>
+            )}
+            {isMerging && !isDone && (
+              <span style={{ fontSize: 12, color: '#888', alignSelf: 'center' }}>
+                Please wait — do not close this tab
+              </span>
             )}
 
             {isDone && (
@@ -229,6 +253,7 @@ export default function FileUploader() {
         </div>
       )}
 
+      <style>{`@keyframes dfup-pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }`}</style>
       <p style={{ fontSize: 11, color: '#555', marginTop: '1.5rem' }}>
         Chunk size: {formatBytes(CHUNK_SIZE)}. On timeout or network drop the
         client retries up to {MAX_CHUNK_RETRIES} times, then shows Resume so you
