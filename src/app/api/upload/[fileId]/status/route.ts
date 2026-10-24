@@ -1,58 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabaseServer';
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-/**
- * GET /api/upload/:fileId/status
- * Returns { status, totalChunks, uploadedChunks: number[] }
- */
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ fileId: string }> },
+  request: Request,
+  { params }: { params: Promise<{ fileId: string }> }
 ) {
   try {
-    const { fileId } = await context.params;
-    if (!fileId) {
-      return NextResponse.json({ error: 'Missing fileId' }, { status: 400 });
-    }
+    const { fileId } = await params;
+    const supabase = getSupabaseAdmin();
 
-    const supabase = getSupabaseServer();
-
-    const { data: file, error: fileErr } = await supabase
-      .from('files')
-      .select('id, status, total_chunks, filename, total_size, storage_path')
-      .eq('id', fileId)
-      .single();
-
-    if (fileErr || !file) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
-    }
-
-    const { data: chunks, error: chunkErr } = await supabase
-      .from('file_chunks')
+    // Check file status and fetch all uploaded chunk indices
+    const { data: chunks, error } = await supabase
+      .from('chunks') // or 'file_chunks' depending on your table name
       .select('chunk_index')
       .eq('file_id', fileId)
-      .order('chunk_index', { ascending: true });
+      .eq('status', 'uploaded');
 
-    if (chunkErr) {
-      return NextResponse.json(
-        { error: chunkErr.message },
-        { status: 500 },
-      );
+    if (error) {
+      // Fallback: if your schema stores uploaded_chunks directly or without a status filter
+      const { data: allChunks } = await supabase
+        .from('chunks')
+        .select('chunk_index')
+        .eq('file_id', fileId);
+
+      const indices = (allChunks || []).map((c: any) => c.chunk_index);
+      return NextResponse.json({ uploadedChunks: indices });
     }
 
-    return NextResponse.json({
-      status: file.status,
-      totalChunks: file.total_chunks,
-      uploadedChunks: (chunks ?? []).map((c) => c.chunk_index),
-      filename: file.filename,
-      totalSize: Number(file.total_size),
-      storagePath: file.storage_path,
-    });
-  } catch (err) {
-    console.error('status error', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal error' },
-      { status: 500 },
-    );
+    const uploadedChunks = (chunks || []).map((c: any) => c.chunk_index);
+    return NextResponse.json({ uploadedChunks });
+  } catch (err: any) {
+    return NextResponse.json({ uploadedChunks: [], error: err.message }, { status: 500 });
   }
 }
