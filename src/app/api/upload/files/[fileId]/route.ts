@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy initializer function to prevent build-time evaluation errors
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  return createClient(url, serviceKey);
+}
 
 export async function DELETE(
   request: Request,
@@ -12,11 +19,11 @@ export async function DELETE(
 ) {
   try {
     const { fileId } = await params;
+    const supabaseAdmin = getSupabaseAdmin();
     const url = new URL(request.url);
     const isPermanent = url.searchParams.get('permanent') === 'true';
 
     if (isPermanent) {
-      // HARD DELETE: Remove from Supabase Storage bucket + Database
       const { data: file } = await supabaseAdmin
         .from('files')
         .select('storage_path')
@@ -34,7 +41,6 @@ export async function DELETE(
 
       if (error) throw error;
     } else {
-      // SOFT DELETE: Move to Bin (set deleted_at timestamp)
       const { error } = await supabaseAdmin
         .from('files')
         .update({ deleted_at: new Date().toISOString() })
@@ -59,8 +65,8 @@ export async function PATCH(
 ) {
   try {
     const { fileId } = await params;
+    const supabaseAdmin = getSupabaseAdmin();
 
-    // RESTORE FROM BIN: Clear deleted_at timestamp
     const { error } = await supabaseAdmin
       .from('files')
       .update({ deleted_at: null })
