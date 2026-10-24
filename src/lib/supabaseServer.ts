@@ -1,9 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-/**
- * Server-side Supabase admin client (service role).
- * Never import this from client components — it has full DB + Storage access.
- */
+
 let _client: SupabaseClient | null = null;
 
 export function getSupabaseServer(): SupabaseClient {
@@ -28,7 +25,7 @@ export function getSupabaseServer(): SupabaseClient {
   return _client;
 }
 
-/** 1 GB free-tier hard cap */
+/** Legacy constant (no longer enforced in UI) */
 export const MAX_STORAGE_LIMIT_BYTES = 1_073_741_824;
 
 /** Storage bucket name (matches Supabase dashboard) */

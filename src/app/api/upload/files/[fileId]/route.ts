@@ -1,86 +1,79 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  getSupabaseServer,
-  STORAGE_BUCKET,
-} from '@/lib/supabaseServer';
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-/**
- * DELETE /api/upload/files/:fileId
- * Removes the object from Supabase Storage (if storage_path set)
- * and deletes the files row (cascades to file_chunks).
- */
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ fileId: string }> },
+  request: Request,
+  { params }: { params: Promise<{ fileId: string }> }
 ) {
   try {
-    const { fileId } = await context.params;
-    if (!fileId) {
-      return NextResponse.json({ error: 'Missing fileId' }, { status: 400 });
-    }
+    const { fileId } = await params;
+    const url = new URL(request.url);
+    const isPermanent = url.searchParams.get('permanent') === 'true';
 
-    const supabase = getSupabaseServer();
+    if (isPermanent) {
+      // HARD DELETE: Remove from Supabase Storage bucket + Database
+      const { data: file } = await supabaseAdmin
+        .from('files')
+        .select('storage_path')
+        .eq('id', fileId)
+        .single();
 
-    const { data: file, error: fetchErr } = await supabase
-      .from('files')
-      .select('id, storage_path, filename, status')
-      .eq('id', fileId)
-      .single();
-
-    if (fetchErr || !file) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
-    }
-
-    // Collect storage paths to remove (merged object + any leftover chunks)
-    const pathsToRemove: string[] = [];
-
-    if (file.storage_path) {
-      pathsToRemove.push(file.storage_path);
-    }
-
-    // Best-effort: also wipe any residual chunk objects under chunks/{fileId}/
-    const { data: listed } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .list(`chunks/${fileId}`, { limit: 10_000 });
-
-    if (listed?.length) {
-      for (const obj of listed) {
-        if (obj.name) {
-          pathsToRemove.push(`chunks/${fileId}/${obj.name}`);
-        }
+      if (file?.storage_path) {
+        await supabaseAdmin.storage.from('dfup').remove([file.storage_path]);
       }
+
+      const { error } = await supabaseAdmin
+        .from('files')
+        .delete()
+        .eq('id', fileId);
+
+      if (error) throw error;
+    } else {
+      // SOFT DELETE: Move to Bin (set deleted_at timestamp)
+      const { error } = await supabaseAdmin
+        .from('files')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', fileId);
+
+      if (error) throw error;
     }
 
-    if (pathsToRemove.length > 0) {
-      const { error: rmErr } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove(pathsToRemove);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('DELETE route error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Delete operation failed' },
+      { status: 500 }
+    );
+  }
+}
 
-      if (rmErr) {
-        // Log but still attempt DB delete so the UI can recover from orphans
-        console.warn('storage remove warning:', rmErr.message);
-      }
-    }
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ fileId: string }> }
+) {
+  try {
+    const { fileId } = await params;
 
-    const { error: delErr } = await supabase
+    // RESTORE FROM BIN: Clear deleted_at timestamp
+    const { error } = await supabaseAdmin
       .from('files')
-      .delete()
+      .update({ deleted_at: null })
       .eq('id', fileId);
 
-    if (delErr) {
-      console.error('db delete failed', delErr);
-      return NextResponse.json(
-        { error: delErr.message || 'Failed to delete file record' },
-        { status: 500 },
-      );
-    }
+    if (error) throw error;
 
-    return NextResponse.json({ success: true, fileId });
-  } catch (err) {
-    console.error('delete error', err);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('PATCH restore error:', error);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal error' },
-      { status: 500 },
+      { error: error.message || 'Restore operation failed' },
+      { status: 500 }
     );
   }
 }

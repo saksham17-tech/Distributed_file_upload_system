@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'DFUP — Streamlined File Upload',
-  description: 'Resumable chunked uploads with 1 GB free-tier quota',
+  title: 'DFUP - Secure File Storage',
+  description: 'Secure, high-speed chunked file uploads built for scale.',
 };
 
 export default function RootLayout({
@@ -11,15 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          background: '#0a0a0a',
-          color: '#eee',
-          minHeight: '100vh',
-        }}
-      >
+    <html lang="en" className="dark">
+      <body className={`${inter.className} antialiased bg-zinc-950 text-zinc-50 selection:bg-blue-500/30 selection:text-blue-200`}>
         {children}
       </body>
     </html>

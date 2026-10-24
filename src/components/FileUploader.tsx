@@ -1,13 +1,9 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createUploader,
   type UploadState,
-  CHUNK_SIZE,
-  CHUNK_TIMEOUT_MS,
-  MAX_CHUNK_RETRIES,
-  MAX_CONCURRENT_UPLOADS,
 } from '@/lib/upload';
 
 const initial: UploadState = {
@@ -27,14 +23,29 @@ function formatBytes(n: number) {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export default function FileUploader() {
+type Props = {
+  onSuccess?: () => void;
+};
+
+export default function FileUploader({ onSuccess }: Props) {
   const [state, setState] = useState<UploadState>(initial);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  const prevStatus = useRef<UploadState['status']>('idle');
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+
   const uploaderRef = useRef(
     createUploader((partial) => {
       setState((prev) => ({ ...prev, ...partial }));
     }),
   );
+
+  useEffect(() => {
+    if (prevStatus.current !== 'completed' && state.status === 'completed') {
+      onSuccessRef.current?.();
+    }
+    prevStatus.current = state.status;
+  }, [state.status]);
 
   const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -50,7 +61,6 @@ export default function FileUploader() {
     totalBytes,
     error,
     fileId,
-    uploadedChunks,
   } = state;
 
   const isActive = status === 'uploading' || status === 'init';
@@ -58,167 +68,102 @@ export default function FileUploader() {
   const isPaused = status === 'paused';
   const isDone = status === 'completed';
   const isError = status === 'error';
-  // Bytes fully sent but server still merging
   const isMerging =
     isProcessing ||
     (isActive && totalBytes > 0 && uploadedBytes >= totalBytes);
-  /** Resume is available on both pause and recoverable error */
   const canResume = (isPaused || isError) && !!fileId && !!selectedName;
 
   return (
-    <div
-      style={{
-        maxWidth: 480,
-        margin: '2rem auto',
-        padding: '1.5rem',
-        borderRadius: 12,
-        border: '1px solid #333',
-        background: '#111',
-        color: '#eee',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      <h2 style={{ marginTop: 0, fontSize: '1.25rem' }}>
-        Resumable Chunked Uploader
-      </h2>
-      <p style={{ color: '#888', fontSize: 13, marginBottom: '1.25rem' }}>
-        5&nbsp;MB chunks · {MAX_CONCURRENT_UPLOADS} concurrent · SHA-256 ·{' '}
-        {CHUNK_TIMEOUT_MS / 1000}s timeout · {MAX_CHUNK_RETRIES}× retry · 1&nbsp;GB quota
-      </p>
+    <div className="mb-5 rounded-2xl border border-zinc-800/50 bg-zinc-900/70 p-5 shadow-sm backdrop-blur-xl transition-all duration-200">
+      <h2 className="m-0 text-lg font-medium text-zinc-100">Upload</h2>
 
       <label
-        style={{
-          display: 'block',
-          padding: '1.5rem',
-          border: '2px dashed #444',
-          borderRadius: 8,
-          textAlign: 'center',
-          cursor: isActive ? 'not-allowed' : 'pointer',
-          opacity: isActive ? 0.6 : 1,
-        }}
+        className={`mt-4 block cursor-pointer rounded-xl border border-dashed border-zinc-700 bg-zinc-950/60 p-10 text-center transition-colors hover:border-zinc-500 ${
+          isActive || isMerging ? 'pointer-events-none opacity-50' : ''
+        }`}
       >
         <input
           type="file"
           onChange={onFile}
-          disabled={isActive}
-          style={{ display: 'none' }}
+          disabled={isActive || isMerging}
+          className="hidden"
         />
         {selectedName ? (
-          <span>{selectedName}</span>
+          <span className="font-medium text-zinc-100">{selectedName}</span>
         ) : (
-          <span style={{ color: '#aaa' }}>Click to choose a file</span>
+          <span className="text-zinc-500">Drop a file or click to browse</span>
         )}
       </label>
 
       {(isActive || isProcessing || isPaused || isDone || isError) && (
-        <div style={{ marginTop: '1.25rem' }}>
-          <div
-            style={{
-              height: 8,
-              background: '#222',
-              borderRadius: 4,
-              overflow: 'hidden',
-            }}
-          >
+        <div className="mt-5">
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
             <div
+              className="h-full rounded-full transition-all duration-300 ease-out"
               style={{
-                height: '100%',
                 width: `${Math.min(100, Math.max(0, progress))}%`,
                 background: isError
-                  ? '#e11'
+                  ? '#ef4444'
                   : isDone
-                    ? '#0a0'
-                    : isMerging
+                    ? '#22c55e'
+                    : isPaused
                       ? '#eab308'
-                      : isPaused
-                        ? '#c90'
-                        : '#3b82f6',
-                transition: 'width 300ms ease-out, background-color 300ms ease', /* smooth glide */
-                willChange: 'width',
+                      : '#a1a1aa',
               }}
             />
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: 13,
-              marginTop: 8,
-              color: '#aaa',
-            }}
-          >
+          <div className="mt-2 flex justify-between text-xs text-zinc-500">
             <span>
               {formatBytes(uploadedBytes)} / {formatBytes(totalBytes)}
             </span>
-            <span>{progress >= 100 ? 100 : Math.min(99.9, progress).toFixed(1)}%</span>
+            <span>
+              {progress >= 100 ? 100 : Math.min(99.9, progress).toFixed(1)}%
+            </span>
           </div>
 
-          <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-            Status:{' '}
+          <div className="mt-2 text-sm">
             {isMerging && !isDone ? (
-              <span
-                style={{
-                  color: '#eab308',
-                  fontWeight: 600,
-                  animation: 'dfup-pulse 1.2s ease-in-out infinite',
-                }}
-              >
-                Processing and merging on server…
+              <span className="animate-pulse font-medium text-zinc-300">
+                Saving to your files... Please wait.
               </span>
             ) : (
-              <strong style={{ color: isDone ? '#4ade80' : '#ccc' }}>
+              <span className={isDone ? 'font-medium text-green-400' : 'text-zinc-500'}>
                 {isDone ? 'Upload completed' : status}
-              </strong>
-            )}
-            {fileId && (
-              <>
-                {' '}
-                · fileId: <code>{fileId.slice(0, 8)}…</code>
-              </>
-            )}
-            {uploadedChunks.length > 0 && (
-              <> · chunks: {uploadedChunks.length}</>
+              </span>
             )}
           </div>
 
           {error && (
-            <p style={{ color: '#f66', fontSize: 13, marginTop: 8 }}>
+            <p className="mt-2 text-sm text-red-400">
               {error}
               {canResume && (
-                <span style={{ color: '#aaa', display: 'block', marginTop: 4 }}>
-                  Progress is saved. Click <strong>Resume Upload</strong> to
-                  continue from the last successful chunk.
+                <span className="mt-1 block text-zinc-500">
+                  Progress is saved. Click Resume to continue.
                 </span>
               )}
             </p>
           )}
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <div className="mt-3 flex flex-wrap gap-2">
             {isActive && !isMerging && (
               <button
                 type="button"
                 onClick={() => uploaderRef.current.pause()}
-                style={btnStyle}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
               >
                 Pause
               </button>
             )}
-
-            {/* Resume works for both paused AND error states */}
             {canResume && (
               <button
                 type="button"
                 onClick={() => uploaderRef.current.resume()}
-                style={{
-                  ...btnStyle,
-                  background: isError ? '#16a34a' : '#3b82f6',
-                }}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
               >
-                Resume Upload
+                Resume
               </button>
             )}
-
             {(isActive || isPaused || isError) && !isMerging && (
               <button
                 type="button"
@@ -226,17 +171,11 @@ export default function FileUploader() {
                   uploaderRef.current.abort();
                   setSelectedName(null);
                 }}
-                style={{ ...btnStyle, background: '#333' }}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
               >
                 Cancel
               </button>
             )}
-            {isMerging && !isDone && (
-              <span style={{ fontSize: 12, color: '#888', alignSelf: 'center' }}>
-                Please wait — do not close this tab
-              </span>
-            )}
-
             {isDone && (
               <button
                 type="button"
@@ -244,7 +183,7 @@ export default function FileUploader() {
                   setState(initial);
                   setSelectedName(null);
                 }}
-                style={btnStyle}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
               >
                 Upload another
               </button>
@@ -252,24 +191,6 @@ export default function FileUploader() {
           </div>
         </div>
       )}
-
-      <style>{`@keyframes dfup-pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }`}</style>
-      <p style={{ fontSize: 11, color: '#555', marginTop: '1.5rem' }}>
-        Chunk size: {formatBytes(CHUNK_SIZE)}. On timeout or network drop the
-        client retries up to {MAX_CHUNK_RETRIES} times, then shows Resume so you
-        never re-upload finished chunks.
-      </p>
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: 'none',
-  background: '#3b82f6',
-  color: '#fff',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 500,
-};
