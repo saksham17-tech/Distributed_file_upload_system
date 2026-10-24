@@ -1,192 +1,132 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  createUploader,
-  type UploadState,
-} from '@/lib/upload';
+import { useState, useRef, useEffect } from 'react';
+import { createUploader, UploadControls, UploadState } from '@/lib/upload';
+import { Play, Pause, X, CheckCircle, AlertCircle, UploadCloud } from 'lucide-react';
 
-const initial: UploadState = {
-  fileId: null,
-  status: 'idle',
-  progress: 0,
-  uploadedBytes: 0,
-  totalBytes: 0,
-  error: null,
-  uploadedChunks: [],
-};
+export default function FileUploader({ onSuccess }: { onSuccess?: () => void }) {
+  const [uploadState, setUploadState] = useState<UploadState>({
+    fileId: null,
+    status: 'idle',
+    progress: 0,
+    uploadedBytes: 0,
+    totalBytes: 0,
+    error: null,
+    uploadedChunks: [],
+  });
 
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-type Props = {
-  onSuccess?: () => void;
-};
-
-export default function FileUploader({ onSuccess }: Props) {
-  const [state, setState] = useState<UploadState>(initial);
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const prevStatus = useRef<UploadState['status']>('idle');
-  const onSuccessRef = useRef(onSuccess);
-  onSuccessRef.current = onSuccess;
-
-  const uploaderRef = useRef(
-    createUploader((partial) => {
-      setState((prev) => ({ ...prev, ...partial }));
-    }),
-  );
+  const controlsRef = useRef<UploadControls | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (prevStatus.current !== 'completed' && state.status === 'completed') {
-      onSuccessRef.current?.();
-    }
-    prevStatus.current = state.status;
-  }, [state.status]);
+    controlsRef.current = createUploader((newState) => {
+      setUploadState((prev) => {
+        const updated = { ...prev, ...newState };
+        if (updated.status === 'completed') {
+          onSuccess?.();
+        }
+        return updated;
+      });
+    });
+  }, [onSuccess]);
 
-  const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedName(file.name);
-    await uploaderRef.current.start(file);
-  }, []);
+    if (!file || !controlsRef.current) return;
+    await controlsRef.current.start(file);
+  };
 
-  const {
-    status,
-    progress,
-    uploadedBytes,
-    totalBytes,
-    error,
-    fileId,
-  } = state;
-
-  const isActive = status === 'uploading' || status === 'init';
-  const isProcessing = status === 'processing';
-  const isPaused = status === 'paused';
-  const isDone = status === 'completed';
-  const isError = status === 'error';
-  const isMerging =
-    isProcessing ||
-    (isActive && totalBytes > 0 && uploadedBytes >= totalBytes);
-  const canResume = (isPaused || isError) && !!fileId && !!selectedName;
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   return (
-    <div className="mb-5 rounded-2xl border border-zinc-800/50 bg-zinc-900/70 p-5 shadow-sm backdrop-blur-xl transition-all duration-200">
-      <h2 className="m-0 text-lg font-medium text-zinc-100">Upload</h2>
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur-md">
+      {uploadState.status === 'idle' ? (
+        <div 
+          onClick={() => fileInputRef.current?.click()}
+          className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-zinc-700 p-8 transition-colors hover:border-blue-500 cursor-pointer"
+        >
+          <UploadCloud className="mb-3 h-10 w-10 text-zinc-400" />
+          <p className="text-sm font-medium text-zinc-200">Click to upload or drag and drop</p>
+          <p className="mt-1 text-xs text-zinc-500">Supports chunked resumable uploads (4MB chunks)</p>
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            className="hidden" 
+            onChange={handleFileChange}
+          />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-zinc-200 capitalize">
+              Status: <strong className="text-blue-400">{uploadState.status}</strong>
+            </span>
+            <span className="text-xs text-zinc-400">
+              {formatBytes(uploadState.uploadedBytes)} / {formatBytes(uploadState.totalBytes)} ({Math.round(uploadState.progress)}%)
+            </span>
+          </div>
 
-      <label
-        className={`mt-4 block cursor-pointer rounded-xl border border-dashed border-zinc-700 bg-zinc-950/60 p-10 text-center transition-colors hover:border-zinc-500 ${
-          isActive || isMerging ? 'pointer-events-none opacity-50' : ''
-        }`}
-      >
-        <input
-          type="file"
-          onChange={onFile}
-          disabled={isActive || isMerging}
-          className="hidden"
-        />
-        {selectedName ? (
-          <span className="font-medium text-zinc-100">{selectedName}</span>
-        ) : (
-          <span className="text-zinc-500">Drop a file or click to browse</span>
-        )}
-      </label>
-
-      {(isActive || isProcessing || isPaused || isDone || isError) && (
-        <div className="mt-5">
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
-            <div
-              className="h-full rounded-full transition-all duration-300 ease-out"
-              style={{
-                width: `${Math.min(100, Math.max(0, progress))}%`,
-                background: isError
-                  ? '#ef4444'
-                  : isDone
-                    ? '#22c55e'
-                    : isPaused
-                      ? '#eab308'
-                      : '#a1a1aa',
-              }}
+          {/* Progress Bar */}
+          <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+            <div 
+              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-150"
+              style={{ width: `${uploadState.progress}%` }}
             />
           </div>
 
-          <div className="mt-2 flex justify-between text-xs text-zinc-500">
-            <span>
-              {formatBytes(uploadedBytes)} / {formatBytes(totalBytes)}
-            </span>
-            <span>
-              {progress >= 100 ? 100 : Math.min(99.9, progress).toFixed(1)}%
-            </span>
-          </div>
-
-          <div className="mt-2 text-sm">
-            {isMerging && !isDone ? (
-              <span className="animate-pulse font-medium text-zinc-300">
-                Saving to your files... Please wait.
-              </span>
-            ) : (
-              <span className={isDone ? 'font-medium text-green-400' : 'text-zinc-500'}>
-                {isDone ? 'Upload completed' : status}
-              </span>
-            )}
-          </div>
-
-          {error && (
-            <p className="mt-2 text-sm text-red-400">
-              {error}
-              {canResume && (
-                <span className="mt-1 block text-zinc-500">
-                  Progress is saved. Click Resume to continue.
-                </span>
-              )}
+          {uploadState.error && (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5" /> {uploadState.error}
             </p>
           )}
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {isActive && !isMerging && (
+          {/* Controls */}
+          <div className="flex items-center gap-3 pt-2">
+            {uploadState.status === 'uploading' && (
               <button
-                type="button"
-                onClick={() => uploaderRef.current.pause()}
-                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
+                onClick={() => controlsRef.current?.pause()}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-600/20 border border-amber-500/30 px-4 py-2 text-xs font-medium text-amber-300 hover:bg-amber-600/30 transition-colors"
               >
-                Pause
+                <Pause className="h-3.5 w-3.5" /> Pause
               </button>
             )}
-            {canResume && (
+
+            {uploadState.status === 'paused' && (
               <button
-                type="button"
-                onClick={() => uploaderRef.current.resume()}
-                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
+                onClick={() => controlsRef.current?.resume()}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-500 transition-colors shadow-[0_0_15px_rgba(37,99,235,0.4)]"
               >
-                Resume
+                <Play className="h-3.5 w-3.5" /> Resume
               </button>
             )}
-            {(isActive || isPaused || isError) && !isMerging && (
+
+            {(uploadState.status === 'uploading' || uploadState.status === 'paused' || uploadState.status === 'error') && (
               <button
-                type="button"
-                onClick={() => {
-                  uploaderRef.current.abort();
-                  setSelectedName(null);
-                }}
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                onClick={() => controlsRef.current?.abort()}
+                className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition-colors"
               >
-                Cancel
+                <X className="h-3.5 w-3.5" /> Cancel
               </button>
             )}
-            {isDone && (
-              <button
-                type="button"
-                onClick={() => {
-                  setState(initial);
-                  setSelectedName(null);
-                }}
-                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
-              >
-                Upload another
-              </button>
+
+            {uploadState.status === 'completed' && (
+              <div className="flex items-center justify-between w-full">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                  <CheckCircle className="h-4 w-4" /> Upload completed successfully!
+                </span>
+                <button
+                  onClick={() => controlsRef.current?.abort()}
+                  className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700"
+                >
+                  Upload Another
+                </button>
+              </div>
             )}
           </div>
         </div>
