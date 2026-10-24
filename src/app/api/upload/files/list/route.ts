@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   getSupabaseServer,
   STORAGE_BUCKET,
@@ -6,19 +6,29 @@ import {
 
 /**
  * GET /api/upload/files/list
- * Completed files + 1-hour signed download URLs.
+ * ?bin=1 → soft-deleted files only
+ * default → active completed files (deleted_at is null)
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const bin = req.nextUrl.searchParams.get('bin') === '1';
     const supabase = getSupabaseServer();
 
-    const { data: files, error } = await supabase
+    let query = supabase
       .from('files')
       .select(
-        'id, filename, total_size, mime_type, storage_path, status, created_at',
+        'id, filename, total_size, mime_type, storage_path, status, created_at, deleted_at',
       )
       .eq('status', 'COMPLETED')
-      .order('created_at', { ascending: false });
+      .order(bin ? 'deleted_at' : 'created_at', { ascending: false });
+
+    if (bin) {
+      query = query.not('deleted_at', 'is', null);
+    } else {
+      query = query.is('deleted_at', null);
+    }
+
+    const { data: files, error } = await query;
 
     if (error) {
       console.error('list files failed', error);
@@ -32,16 +42,13 @@ export async function GET() {
       (files ?? []).map(async (file) => {
         let downloadUrl: string | null = null;
 
-        if (file.storage_path) {
+        if (file.storage_path && !bin) {
           const { data: signed, error: signErr } = await supabase.storage
             .from(STORAGE_BUCKET)
-            .createSignedUrl(file.storage_path, 3600); // 1 hour
+            .createSignedUrl(file.storage_path, 3600);
 
           if (signErr) {
-            console.warn(
-              `signed URL failed for ${file.id}:`,
-              signErr.message,
-            );
+            console.warn(`signed URL failed for ${file.id}:`, signErr.message);
           } else {
             downloadUrl = signed?.signedUrl ?? null;
           }
@@ -54,6 +61,7 @@ export async function GET() {
           mimeType: file.mime_type,
           storagePath: file.storage_path,
           createdAt: file.created_at,
+          deletedAt: file.deleted_at,
           downloadUrl,
         };
       }),

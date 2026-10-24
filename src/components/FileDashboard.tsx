@@ -1,11 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Download, Trash2, RefreshCw, FileIcon } from 'lucide-react';
 
 type Quota = {
   usedBytes: number;
-  limitBytes: number;
-  remainingBytes: number;
   fileCount: number;
 };
 
@@ -37,256 +36,259 @@ function formatDate(iso: string) {
   }
 }
 
-export default function FileDashboard() {
+type Props = {
+  compact?: boolean;
+  /** When true, list soft-deleted files and show restore/permanent actions */
+  isBin?: boolean;
+  refreshSignal?: number;
+};
+
+export default function FileDashboard({
+  compact = false,
+  isBin = false,
+  refreshSignal = 0,
+}: Props) {
   const [quota, setQuota] = useState<Quota | null>(null);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pending, setPending] = useState<FileRow | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const listUrl = isBin
+        ? '/api/upload/files/list?bin=1'
+        : '/api/upload/files/list';
       const [qRes, fRes] = await Promise.all([
-        fetch('/api/upload/usage/quota'),
-        fetch('/api/upload/files/list'),
+        isBin
+          ? Promise.resolve(new Response(JSON.stringify({ usedBytes: 0, fileCount: 0 }), { status: 200 }))
+          : fetch('/api/upload/usage/quota'),
+        fetch(listUrl),
       ]);
-
-      if (!qRes.ok) {
-        const t = await qRes.text();
-        throw new Error(t || `Quota failed (${qRes.status})`);
-      }
-      if (!fRes.ok) {
-        const t = await fRes.text();
-        throw new Error(t || `List failed (${fRes.status})`);
-      }
-
-      const q = (await qRes.json()) as Quota;
+      if (!qRes.ok) throw new Error((await qRes.text()) || `Quota ${qRes.status}`);
+      if (!fRes.ok) throw new Error((await fRes.text()) || `List ${fRes.status}`);
+      setQuota((await qRes.json()) as Quota);
       const f = (await fRes.json()) as FileRow[];
-      setQuota(q);
       setFiles(Array.isArray(f) ? f : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isBin]);
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, refreshSignal, isBin]);
 
-  const onDelete = useCallback(
-    async (fileId: string, filename: string) => {
-      const ok = window.confirm(
-        `Delete "${filename}" permanently from storage and database?`,
+  async function moveToBin() {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/upload/files/${pending.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Move to bin failed');
+      setPending(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePermanent() {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/upload/files/${pending.id}?permanent=true`,
+        { method: 'DELETE' },
       );
-      if (!ok) return;
+      if (!res.ok) throw new Error((await res.text()) || 'Delete failed');
+      setPending(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      setDeletingId(fileId);
-      setError(null);
-      try {
-        const res = await fetch(`/api/upload/files/${fileId}`, {
-          method: 'DELETE',
-        });
-        if (!res.ok) {
-          const t = await res.text();
-          throw new Error(t || `Delete failed (${res.status})`);
-        }
-        // Optimistic remove, then refresh quota + list
-        setFiles((prev) => prev.filter((f) => f.id !== fileId));
-        await refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [refresh],
-  );
-
-  const usedPct = quota
-    ? Math.min(100, (quota.usedBytes / quota.limitBytes) * 100)
-    : 0;
+  const usedMb =
+    quota != null ? (quota.usedBytes / (1024 * 1024)).toFixed(2) : null;
 
   return (
-    <section
-      style={{
-        maxWidth: 640,
-        margin: '2rem auto',
-        padding: '1.5rem',
-        borderRadius: 12,
-        border: '1px solid #333',
-        background: '#111',
-        color: '#eee',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Storage &amp; Files</h2>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={loading}
-          style={{
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: 'none',
-            background: '#333',
-            color: '#fff',
-            cursor: loading ? 'wait' : 'pointer',
-            fontSize: 13,
-          }}
-        >
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </div>
+    <>
+      <section className="rounded-2xl border border-zinc-800/50 bg-zinc-900/70 p-5 shadow-sm backdrop-blur-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="m-0 text-base font-medium text-zinc-100">
+            {isBin ? 'Bin' : compact ? 'Recent' : 'My files'}
+          </h2>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
 
-      {error && (
-        <p style={{ color: '#f66', fontSize: 13, marginBottom: 12 }}>{error}</p>
-      )}
+        {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
-      {quota && (
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: 13,
-              color: '#aaa',
-              marginBottom: 6,
-            }}
-          >
-            <span>
-              {formatBytes(quota.usedBytes)} / {formatBytes(quota.limitBytes)}
-            </span>
-            <span>{usedPct.toFixed(1)}% used</span>
-          </div>
-          <div
-            style={{
-              height: 10,
-              background: '#222',
-              borderRadius: 5,
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${usedPct}%`,
-                background:
-                  usedPct > 90 ? '#e11' : usedPct > 70 ? '#c90' : '#3b82f6',
-                transition: 'width 0.3s ease',
-              }}
-            />
-          </div>
-          <p
-            style={{
-              fontSize: 12,
-              color: '#666',
-              marginTop: 6,
-              marginBottom: 0,
-            }}
-          >
-            {formatBytes(quota.remainingBytes)} remaining · {quota.fileCount}{' '}
-            file(s) counting toward quota
+        {!isBin && quota && (
+          <p className="mb-4 text-sm text-zinc-500">
+            Storage Used: {usedMb} MB
+            {quota.fileCount
+              ? ` · ${quota.fileCount} file${quota.fileCount === 1 ? '' : 's'}`
+              : ''}
           </p>
+        )}
+
+        {!loading && files.length === 0 && (
+          <p className="py-10 text-center text-sm text-zinc-600">
+            No files yet
+          </p>
+        )}
+
+        <ul className="m-0 list-none p-0">
+          {files.map((f) => (
+            <li
+              key={f.id}
+              className="flex items-center gap-3 rounded-xl border-b border-zinc-800/60 py-3 transition-all duration-200 last:border-0 hover:bg-zinc-800/30"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-zinc-800 text-zinc-400">
+                <FileIcon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div
+                  className="truncate text-sm font-medium text-zinc-100"
+                  title={f.filename}
+                >
+                  {f.filename}
+                </div>
+                <div className="mt-0.5 text-xs text-zinc-500">
+                  {formatBytes(f.totalSize)}
+                  {f.createdAt ? ` · ${formatDate(f.createdAt)}` : ''}
+                </div>
+              </div>
+
+              {isBin ? (
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/upload/files/${f.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'restore' }),
+                      });
+                      if (!res.ok) throw new Error(await res.text());
+                      await refresh();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-all duration-200 hover:bg-zinc-800"
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(
+                        `/api/upload/files/${f.id}?permanent=true`,
+                        { method: 'DELETE' },
+                      );
+                      if (!res.ok) throw new Error(await res.text());
+                      await refresh();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
+                  className="rounded-lg bg-red-500/10 px-3 py-1.5 text-sm text-red-500 transition-all duration-200 hover:bg-red-500/20"
+                >
+                  Delete
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  href={`/api/upload/files/${f.id}/download`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                  title="Download"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPending(f)}
+                  title="Delete"
+                  className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-red-900 hover:bg-red-950/40 hover:text-red-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {pending && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800/60 bg-zinc-900/90 p-6 shadow-2xl backdrop-blur-xl">
+            <h3 className="text-lg font-medium text-zinc-50">Delete file</h3>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Are you sure you want to delete this permanently? Your data will
+              not be retrieved.
+            </p>
+            <p className="mt-2 truncate text-sm font-medium text-zinc-200">
+              {pending.filename}
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPending(null)}
+                className="rounded-lg border border-zinc-700/80 px-4 py-2 text-sm text-zinc-300 transition-all duration-200 hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={moveToBin}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-all duration-200 hover:bg-white disabled:opacity-50"
+              >
+                {busy ? '…' : 'Move to Bin'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={deletePermanent}
+                className="rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-500 transition-all duration-200 hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {busy ? '…' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
-
-      <h3 style={{ fontSize: 14, color: '#aaa', margin: '0 0 0.75rem' }}>
-        Completed uploads
-      </h3>
-
-      {!loading && files.length === 0 && (
-        <p style={{ color: '#666', fontSize: 13 }}>No completed files yet.</p>
-      )}
-
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {files.map((f) => (
-          <li
-            key={f.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 0',
-              borderBottom: '1px solid #222',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: 14,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-                title={f.filename}
-              >
-                {f.filename}
-              </div>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                {formatBytes(f.totalSize)}
-                {f.createdAt ? ` · ${formatDate(f.createdAt)}` : ''}
-              </div>
-            </div>
-
-            {f.downloadUrl ? (
-              <a
-                href={f.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  background: '#3b82f6',
-                  color: '#fff',
-                  textDecoration: 'none',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  flexShrink: 0,
-                }}
-              >
-                Download
-              </a>
-            ) : (
-              <span style={{ fontSize: 12, color: '#555', flexShrink: 0 }}>
-                No URL
-              </span>
-            )}
-
-            <button
-              type="button"
-              onClick={() => onDelete(f.id, f.filename)}
-              disabled={deletingId === f.id}
-              title="Delete file"
-              style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: 'none',
-                background: deletingId === f.id ? '#553' : '#7f1d1d',
-                color: '#fecaca',
-                cursor: deletingId === f.id ? 'wait' : 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                flexShrink: 0,
-              }}
-            >
-              {deletingId === f.id ? 'Deleting…' : 'Delete'}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    </>
   );
 }

@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import {
-  getSupabaseServer,
-  MAX_STORAGE_LIMIT_BYTES,
-} from '@/lib/supabaseServer';
+import { getSupabaseServer } from '@/lib/supabaseServer';
 
 /**
  * GET /api/upload/usage/quota
- * Returns { usedBytes, limitBytes, remainingBytes, fileCount }
+ * Active (non-bin, non-failed) storage only.
  */
 export async function GET() {
   try {
@@ -15,7 +12,8 @@ export async function GET() {
     const { data: rows, error } = await supabase
       .from('files')
       .select('total_size')
-      .neq('status', 'FAILED');
+      .neq('status', 'FAILED')
+      .is('deleted_at', null);
 
     if (error) {
       console.error('quota query failed', error);
@@ -32,8 +30,6 @@ export async function GET() {
 
     return NextResponse.json({
       usedBytes,
-      limitBytes: MAX_STORAGE_LIMIT_BYTES,
-      remainingBytes: Math.max(0, MAX_STORAGE_LIMIT_BYTES - usedBytes),
       fileCount: rows?.length ?? 0,
     });
   } catch (err) {

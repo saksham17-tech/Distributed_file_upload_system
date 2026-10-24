@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getSupabaseServer,
-  MAX_STORAGE_LIMIT_BYTES,
-} from '@/lib/supabaseServer';
+import { getSupabaseServer } from '@/lib/supabaseServer';
 
 /**
  * POST /api/upload/init
  * Body: { filename, totalSize, totalChunks, mimeType }
- * Returns 201 { fileId } or 403 if quota exceeded.
+ * Returns 201 { fileId }.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -31,32 +28,6 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabaseServer();
-
-    // Sum total_size of non-FAILED files (UPLOADING + COMPLETED count toward quota)
-    const { data: rows, error: sumErr } = await supabase
-      .from('files')
-      .select('total_size')
-      .neq('status', 'FAILED');
-
-    if (sumErr) {
-      console.error('quota query failed', sumErr);
-      return NextResponse.json(
-        { error: 'Failed to check storage quota' },
-        { status: 500 },
-      );
-    }
-
-    const usedBytes = (rows ?? []).reduce(
-      (acc, r) => acc + Number(r.total_size ?? 0),
-      0,
-    );
-
-    if (usedBytes + totalSize > MAX_STORAGE_LIMIT_BYTES) {
-      return NextResponse.json(
-        { error: 'Storage quota exceeded: 1 GB free-tier limit reached' },
-        { status: 403 },
-      );
-    }
 
     const { data: file, error: insertErr } = await supabase
       .from('files')

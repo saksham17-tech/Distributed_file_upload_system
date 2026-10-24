@@ -1,15 +1,15 @@
 /**
  * Resumable chunked upload utilities (Next.js App Router).
- * Same-origin /api/upload/* · 5 MB chunks · concurrent pool · axios byte progress
+ * Same-origin /api/upload/* · 4 MB chunks · concurrent pool · axios byte progress
  * · 180 s timeout · 3× exponential backoff per chunk
  */
 
 import axios, { AxiosError, type AxiosProgressEvent } from 'axios';
 
-export const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+export const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB (under Vercel 4.5 MB limit)
 
 /** How many chunk uploads may be in flight at once */
-export const MAX_CONCURRENT_UPLOADS = 3;
+export const MAX_CONCURRENT_UPLOADS = 5;
 
 /** @deprecated use MAX_CONCURRENT_UPLOADS */
 export const MAX_CONCURRENCY = MAX_CONCURRENT_UPLOADS;
